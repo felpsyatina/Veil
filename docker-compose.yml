@@ -1,0 +1,106 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  migrate:
+    build: .
+    env_file: .env
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "-m", "app.bot.main"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [internal]
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [internal]
+    expose:
+      - "8000"
+
+  worker:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    command: ["python", "-m", "app.worker.main"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backups:/backups
+    networks: [internal]
+
+  # Реверс-прокси с автоматическим HTTPS (Let's Encrypt) перед публичным API
+  # (вебхуки платёжного провайдера + ссылки подписок /sub/{token}).
+  # Требует, чтобы DOMAIN из .env был реальным доменом с A-записью на этот сервер.
+  # Если у вас уже есть свой nginx/трефик — уберите этот сервис и проксируйте на api:8000 сами.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    networks: [internal]
+
+networks:
+  internal:
+
+volumes:
+  pgdata:
+  redisdata:
+  caddy_data:
+  caddy_config:

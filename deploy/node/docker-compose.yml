@@ -1,0 +1,26 @@
+# Compose-файл для самой ноды (VPS с 3x-ui), НЕ для центрального сервера бота.
+# Разворачивается install_node.sh (который встраивает тот же контент), но
+# лежит здесь и отдельным файлом — для прозрачности и ручного разворачивания,
+# если install_node.sh по каким-то причинам не подходит.
+#
+# network_mode: host — осознанный выбор: панель создаёт Reality-инбаунды на
+# разных портах динамически (в том числе через наш бот), и с host-сетью не
+# нужно заранее прокидывывать каждый порт через docker -p.
+services:
+  xui:
+    image: ghcr.io/mhsanaei/3x-ui:latest
+    container_name: 3x-ui
+    restart: unless-stopped
+    network_mode: host
+    # NET_ADMIN/NET_RAW нужны втроенному в 3x-ui fail2ban для реального
+    # применения лимита устройств на клиента (limitIp в настройках клиента).
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - 3x-ui-db:/etc/x-ui
+      - 3x-ui-cert:/root/cert
+
+volumes:
+  3x-ui-db:
+  3x-ui-cert:

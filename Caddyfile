@@ -1,0 +1,15 @@
+{$DOMAIN} {
+	tls {$ACME_EMAIL}
+
+	encode gzip
+
+	header {
+		# Небольшое ужесточение заголовков ответа по умолчанию.
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	reverse_proxy api:8000 {
+		header_up X-Real-IP {remote_host}
+	}
+}
