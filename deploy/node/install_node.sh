@@ -31,15 +31,28 @@ fi
 PANEL_PORT="${PANEL_PORT:-2053}"
 ADMIN_USER="${ADMIN_USER:-admin}"
 ADMIN_PASS="${ADMIN_PASS:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)}"
+XRAY_PORT="${XRAY_PORT:-}"
 
-read -rp "Порт панели [$PANEL_PORT]: " input_port
-PANEL_PORT="${input_port:-$PANEL_PORT}"
+# Полностью неинтерактивный запуск (в обход read, если по какой-то причине
+# интерактивный ввод/tty в вашей сессии ведёт себя не как ожидается):
+#   NONINTERACTIVE=1 PANEL_PORT=2053 XRAY_PORT=443 bash install_node.sh
+if [[ "${NONINTERACTIVE:-0}" != "1" ]]; then
+  echo "== Параметры установки (Enter — принять значение по умолчанию в []) =="
 
-read -rp "Порт VLESS/Reality на этой ноде (укажете тот же в боте), например 443: " XRAY_PORT
+  read -rp "Порт панели [$PANEL_PORT]: " input_port </dev/tty
+  PANEL_PORT="${input_port:-$PANEL_PORT}"
+
+  if [[ -z "$XRAY_PORT" ]]; then
+    read -rp "Порт VLESS/Reality на этой ноде (укажете тот же в боте), например 443: " XRAY_PORT </dev/tty
+  fi
+fi
+
 if [[ -z "${XRAY_PORT:-}" ]]; then
-  echo "Порт VLESS обязателен." >&2
+  echo "Порт VLESS обязателен. Передайте его через XRAY_PORT=443 (см. подсказку выше)." >&2
   exit 1
 fi
+
+echo "Параметры приняты: PANEL_PORT=${PANEL_PORT}, XRAY_PORT=${XRAY_PORT}"
 
 echo
 echo "Панель:  порт ${PANEL_PORT}, логин ${ADMIN_USER}, пароль ${ADMIN_PASS}"
