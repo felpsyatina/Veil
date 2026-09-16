@@ -86,6 +86,11 @@ class Server(Base):
     panel_url: Mapped[str] = mapped_column(String(512))
     panel_username: Mapped[str] = mapped_column(String(128))
     panel_password_encrypted: Mapped[str] = mapped_column(Text)
+    # API-токен панели (3x-ui 3.7.0+, Settings → Security → API Token) —
+    # предпочтительный способ авторизации бота на панели, см. app/xui/client.py.
+    # Может быть пустым для старых версий панели без поддержки токенов —
+    # тогда используется обычный логин по username/password.
+    api_token_encrypted: Mapped[str | None] = mapped_column(Text)
 
     inbound_id: Mapped[int | None] = mapped_column(Integer)
 

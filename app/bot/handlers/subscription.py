@@ -168,7 +168,7 @@ async def cb_buy_tariff(callback: CallbackQuery, user: User, session: AsyncSessi
             texts.payment_fully_covered_by_balance(payment.applied_balance),
             back_kb("menu:main"),
         )
-    elif payment.provider == "manual":
+    elif payment.provider.lower() == "manual":
         await render(callback, texts.payment_created_manual(payment), payment_kb(payment, None))
     else:
         await render(

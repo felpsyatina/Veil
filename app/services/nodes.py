@@ -37,15 +37,17 @@ class NodeProvisionResult:
 async def provision_node_inbound(
     *,
     panel_url: str,
-    panel_username: str,
-    panel_password: str,
+    panel_username: str = "",
+    panel_password: str = "",
+    api_token: str | None = None,
     remark: str,
     xray_port: int,
     dest: str | None = None,
     server_names: list[str] | None = None,
     fingerprint: str | None = None,
 ) -> NodeProvisionResult:
-    """Логинится на панель ноды и создаёт пустой VLESS+Reality инбаунд.
+    """Логинится на панель ноды (по api_token, если задан, иначе по
+    username/password) и создаёт пустой VLESS+Reality инбаунд.
 
     Ключи Reality генерируются локально (см. app.xui.reality) — панели
     нужны только для того, чтобы прописать их в конфиг Xray.
@@ -56,7 +58,7 @@ async def provision_node_inbound(
     server_names = server_names or settings.reality_server_names_list
     fingerprint = fingerprint or settings.reality_fingerprint
 
-    async with XUIClient(panel_url, panel_username, panel_password) as xui:
+    async with XUIClient(panel_url, panel_username, panel_password, api_token=api_token) as xui:
         result = await xui.create_reality_inbound(
             remark=remark,
             port=xray_port,
@@ -87,8 +89,9 @@ async def create_server(
     host: str,
     port: int,
     panel_url: str,
-    panel_username: str,
-    panel_password: str,
+    panel_username: str = "",
+    panel_password: str = "",
+    api_token: str | None = None,
     provision: NodeProvisionResult,
     sort_order: int = 0,
 ) -> Server:
@@ -100,6 +103,7 @@ async def create_server(
         panel_url=panel_url,
         panel_username=panel_username,
         panel_password_encrypted=encrypt_secret(panel_password),
+        api_token_encrypted=encrypt_secret(api_token) if api_token else None,
         inbound_id=provision.inbound_id,
         reality_public_key=provision.public_key,
         reality_private_key_encrypted=encrypt_secret(provision.private_key),
@@ -161,16 +165,27 @@ async def get_client_count(session: AsyncSession, server_id: int) -> int:
 
 
 def decrypt_panel_password(server: Server) -> str:
+    if not server.panel_password_encrypted:
+        return ""
     return decrypt_secret(server.panel_password_encrypted)
 
 
+def decrypt_api_token(server: Server) -> str | None:
+    if not server.api_token_encrypted:
+        return None
+    return decrypt_secret(server.api_token_encrypted)
+
+
 async def check_node_health(server: Server) -> tuple[bool, str | None]:
-    """Пингует панель ноды логином. Возвращает (healthy, текст_ошибки)."""
+    """Пингует панель ноды (по токену, если есть, иначе логином). Возвращает (healthy, текст_ошибки)."""
     try:
         async with XUIClient(
-            server.panel_url, server.panel_username, decrypt_panel_password(server)
+            server.panel_url,
+            server.panel_username,
+            decrypt_panel_password(server),
+            api_token=decrypt_api_token(server),
         ) as xui:
             ok = await xui.health_check()
-        return ok, None if ok else "Логин на панель не прошёл"
+        return ok, None if ok else "Не удалось подключиться к панели"
     except Exception as exc:  # noqa: BLE001 — health-check не должен ронять воркер
         return False, str(exc)[:500]

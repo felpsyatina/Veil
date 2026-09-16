@@ -55,7 +55,7 @@ def tariffs_kb(tariffs: list[Tariff]) -> InlineKeyboardMarkup:
 
 def payment_kb(payment: Payment, confirmation_url: str | None) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    if payment.provider != "manual" and confirmation_url:
+    if payment.provider.lower() != "manual" and confirmation_url:
         b.button(text="💳 Оплатить", url=confirmation_url)
         b.button(text="🔄 Проверить оплату", callback_data=f"pay:check:{payment.id}")
     else:

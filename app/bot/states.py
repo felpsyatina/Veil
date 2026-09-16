@@ -16,6 +16,7 @@ class AdminNodeAddStates(StatesGroup):
     panel_url = State()
     panel_user = State()
     panel_pass = State()
+    api_token = State()
 
 
 class AdminTariffAddStates(StatesGroup):

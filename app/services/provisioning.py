@@ -73,7 +73,10 @@ async def _apply_client_state(
     )
     try:
         async with XUIClient(
-            server.panel_url, server.panel_username, nodes_service.decrypt_panel_password(server)
+            server.panel_url,
+            server.panel_username,
+            nodes_service.decrypt_panel_password(server),
+            api_token=nodes_service.decrypt_api_token(server),
         ) as xui:
             if link.is_provisioned:
                 await xui.update_client(server.inbound_id, client_cfg)

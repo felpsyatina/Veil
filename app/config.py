@@ -85,6 +85,23 @@ class Settings(BaseSettings):
             return [int(x.strip()) for x in v.split(",") if x.strip()]
         return v
 
+    @field_validator("payment_provider", mode="before")
+    @classmethod
+    def _normalize_payment_provider(cls, v: object) -> object:
+        """Приводим к нижнему регистру сразу при загрузке настроек — это
+        значение (не просто ключ переменной) попадает в БД (Payment.provider)
+        и потом сравнивается со строковыми литералами "manual"/"yookassa" в
+        разных местах кода. Если бы в .env было PAYMENT_PROVIDER=Manual,
+        часть сравнений (например payment.provider == "manual") молча не
+        совпадала бы — нормализация здесь, в одном месте, убирает весь класс
+        этой проблемы для новых записей (см. также защиту в местах сравнения
+        ниже — она нужна для уже сохранённых в БД старых значений с другим
+        регистром, если такие успели появиться).
+        """
+        if isinstance(v, str):
+            return v.strip().lower()
+        return v
+
     @model_validator(mode="after")
     def _build_database_url(self) -> "Settings":
         if not self.database_url:

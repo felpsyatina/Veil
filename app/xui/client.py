@@ -96,20 +96,56 @@ class RealityInboundResult:
 class XUIClient:
     """Клиент к одной ноде (одному инстансу панели 3x-ui).
 
+    Поддерживает два способа авторизации:
+    - api_token (рекомендуется, 3x-ui 3.7.0+): заголовок Authorization: Bearer.
+      Логин по паролю извне на новых версиях панели может быть заблокирован
+      как небезопасный способ для API-клиентов (403 Forbidden на /login) —
+      токен создаётся один раз вручную в панели: Settings → Security (или
+      Integration) → API Tokens → Generate.
+    - username/password (старые версии панели, где токенов ещё нет):
+      обычный cookie-based логин через POST /login.
+
+    Если передан api_token — используется он, username/password в таком
+    случае можно не указывать (или оставить пустыми).
+
     Использование:
-        async with XUIClient(panel_url, username, password) as xui:
+        async with XUIClient(panel_url, username, password, api_token=token) as xui:
             await xui.add_client(inbound_id, client_cfg)
     """
 
-    def __init__(self, panel_url: str, username: str, password: str, timeout: float = 15.0):
+    def __init__(
+        self,
+        panel_url: str,
+        username: str = "",
+        password: str = "",
+        api_token: str | None = None,
+        timeout: float = 15.0,
+    ):
         self._username = username
         self._password = password
+        self._api_token = api_token or None
+        base = panel_url.rstrip("/")
+
+        headers = {
+            # Некоторые сборки 3x-ui (замечено на 3.7.0) проверяют
+            # Origin/Referer на POST-запросах как защиту от CSRF и без
+            # них отвечают 403 Forbidden ещё до проверки логина/пароля.
+            # Обычные HTTP-клиенты (curl, httpx) их не отправляют сами —
+            # только браузер. Задаём явно, чтобы совпадало с base_url.
+            "Origin": base,
+            "Referer": f"{base}/login",
+        }
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
+
         self._client = httpx.AsyncClient(
-            base_url=panel_url.rstrip("/"),
+            base_url=base,
             timeout=timeout,
             follow_redirects=True,
+            headers=headers,
         )
-        self._logged_in = False
+        # При токене логиниться не нужно вовсе — токен уже в заголовках.
+        self._logged_in = bool(self._api_token)
 
     async def __aenter__(self) -> "XUIClient":
         return self
@@ -170,7 +206,20 @@ class XUIClient:
     # ------------------------------------------------------------------ #
 
     async def login(self) -> None:
+        if self._api_token:
+            # Токен уже передан в заголовке Authorization при создании
+            # клиента — отдельный шаг логина не нужен и не поддерживается.
+            self._logged_in = True
+            return
         try:
+            # Сначала обычный GET на корень панели: некоторые сборки 3x-ui
+            # ожидают, что до POST /login клиент уже получит сессионную
+            # cookie (иначе воспринимают запрос как потенциальный CSRF и
+            # отвечают 403 Forbidden ещё до проверки логина/пароля). Сам
+            # GET не аутентифицирует — просто "прогревает" cookie jar
+            # httpx.AsyncClient, который автоматически сохраняет cookies
+            # между запросами в рамках одного XUIClient.
+            await self._raw_request("GET", "/")
             resp = await self._raw_request(
                 "POST", "/login", json={"username": self._username, "password": self._password}
             )
@@ -181,7 +230,12 @@ class XUIClient:
 
     async def health_check(self) -> bool:
         try:
-            await self.login()
+            if self._api_token:
+                # С токеном "логина" не существует — проверяем доступность
+                # лёгким authenticated-запросом.
+                await self.list_inbounds()
+            else:
+                await self.login()
             return True
         except Exception as exc:  # noqa: BLE001 — health-check не должен падать
             logger.info("Health check не пройден: %s", exc)

@@ -25,6 +25,7 @@ from app.bot.keyboards.admin import (
 from app.bot.states import AdminNodeAddStates
 from app.services import nodes as nodes_service
 from app.services import provisioning as provisioning_service
+from app.xui.client import XUIConnectionError
 
 router = Router(name="admin_nodes")
 router.message.filter(IsAdmin())
@@ -165,26 +166,39 @@ async def node_add_panel_user(message: Message, state: FSMContext) -> None:
 
 
 @router.message(AdminNodeAddStates.panel_pass, F.text)
-async def node_add_panel_pass(message: Message, state: FSMContext, session: AsyncSession) -> None:
-    data = await state.get_data()
+async def node_add_panel_pass(message: Message, state: FSMContext) -> None:
     panel_password = message.text.strip()
-
     try:
         await message.delete()  # не оставляем пароль висеть в истории чата
     except Exception:  # noqa: BLE001
         pass
+    await state.update_data(panel_pass=panel_password)
+    await state.set_state(AdminNodeAddStates.api_token)
+    await message.answer(texts.ADMIN_NODE_ADD_ASK_API_TOKEN)
 
+
+async def _finish_node_add(message: Message, state: FSMContext, session: AsyncSession, api_token: str | None) -> None:
+    data = await state.get_data()
     status_msg = await message.answer(texts.ADMIN_NODE_ADD_CONNECTING)
 
     try:
         provision = await nodes_service.provision_node_inbound(
             panel_url=data["panel_url"],
             panel_username=data["panel_user"],
-            panel_password=panel_password,
+            panel_password=data["panel_pass"],
+            api_token=api_token,
             remark=data["name"],
             xray_port=data["port"],
         )
+    except XUIConnectionError as exc:
+        await state.clear()
+        await status_msg.edit_text(
+            texts.admin_node_add_connection_failed(str(exc)[:300]),
+            reply_markup=admin_back_kb("adm:nodes"),
+        )
+        return
     except Exception as exc:  # noqa: BLE001 — показываем ошибку админу как есть
+        await state.clear()
         await status_msg.edit_text(
             texts.admin_node_add_failed(str(exc)[:300]), reply_markup=admin_back_kb("adm:nodes")
         )
@@ -198,7 +212,8 @@ async def node_add_panel_pass(message: Message, state: FSMContext, session: Asyn
         port=data["port"],
         panel_url=data["panel_url"],
         panel_username=data["panel_user"],
-        panel_password=panel_password,
+        panel_password=data["panel_pass"],
+        api_token=api_token,
         provision=provision,
     )
     synced = await provisioning_service.provision_new_node_for_existing_subscriptions(session, server)
@@ -206,3 +221,18 @@ async def node_add_panel_pass(message: Message, state: FSMContext, session: Asyn
     await status_msg.edit_text(
         texts.admin_node_added(server, synced), reply_markup=admin_back_kb("adm:nodes")
     )
+
+
+@router.message(AdminNodeAddStates.api_token, Command("skip"))
+async def node_add_api_token_skip(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    await _finish_node_add(message, state, session, api_token=None)
+
+
+@router.message(AdminNodeAddStates.api_token, F.text)
+async def node_add_api_token(message: Message, state: FSMContext, session: AsyncSession) -> None:
+    token = message.text.strip()
+    try:
+        await message.delete()  # не оставляем токен висеть в истории чата
+    except Exception:  # noqa: BLE001
+        pass
+    await _finish_node_add(message, state, session, api_token=token)

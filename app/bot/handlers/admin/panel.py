@@ -24,6 +24,23 @@ async def cmd_admin(message: Message, state: FSMContext) -> None:
     await message.answer(texts.ADMIN_MENU_HINT, reply_markup=admin_menu_kb())
 
 
+@router.message(Command("cancel"))
+async def cmd_cancel(message: Message, state: FSMContext) -> None:
+    """Универсальная отмена любого админского мастера (добавление ноды/тарифа,
+    поиск пользователя, рассылка, ответ на тикет и т.д.) — очищает FSM-состояние
+    независимо от того, в каком именно шаге мастера сейчас находится админ.
+    Регистрируется на этом (первом в цепочке) роутере, чтобы перехватывать
+    команду раньше специфичных для конкретного состояния хендлеров в других
+    admin-роутерах.
+    """
+    current_state = await state.get_state()
+    if current_state is None:
+        await message.answer("Нечего отменять.")
+        return
+    await state.clear()
+    await message.answer("Отменено.", reply_markup=admin_menu_kb())
+
+
 @router.callback_query(F.data == "adm:menu")
 async def cb_admin_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.clear()

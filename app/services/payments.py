@@ -20,7 +20,7 @@ import datetime as dt
 import logging
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -135,7 +135,7 @@ async def check_and_process_payment(session: AsyncSession, payment_id: int) -> P
 
     if payment.status != PaymentStatus.PENDING:
         return payment
-    if payment.provider_payment_id is None or payment.provider == "manual":
+    if payment.provider_payment_id is None or payment.provider.lower() == "manual":
         return payment
 
     provider = get_payment_provider()
@@ -212,7 +212,7 @@ async def list_stale_pending_payments(session: AsyncSession, older_than_minutes:
     result = await session.execute(
         select(Payment).where(
             Payment.status == PaymentStatus.PENDING,
-            Payment.provider != "manual",
+            func.lower(Payment.provider) != "manual",
             Payment.created_at <= threshold,
         )
     )
@@ -223,7 +223,7 @@ async def list_pending_manual_payments(session: AsyncSession, limit: int = 30) -
     """Платежи, ожидающие ручного подтверждения админом (PAYMENT_PROVIDER=manual)."""
     result = await session.execute(
         select(Payment)
-        .where(Payment.status == PaymentStatus.PENDING, Payment.provider == "manual")
+        .where(Payment.status == PaymentStatus.PENDING, func.lower(Payment.provider) == "manual")
         .order_by(Payment.created_at.asc())
         .limit(limit)
     )

@@ -355,9 +355,23 @@ ADMIN_NODE_ADD_INTRO = (
 ADMIN_NODE_ADD_ASK_COUNTRY = "Код страны (например NL, DE, RU) — можно пропустить командой /skip:"
 ADMIN_NODE_ADD_ASK_HOST = "Адрес сервера (домен или IP), который увидят клиенты:"
 ADMIN_NODE_ADD_ASK_PORT = "Порт, на котором будет слушать VLESS (например 443):"
-ADMIN_NODE_ADD_ASK_PANEL_URL = "Полный URL панели 3x-ui (например https://1.2.3.4:2053/somepath):"
+ADMIN_NODE_ADD_ASK_PANEL_URL = (
+    "Полный URL панели 3x-ui, например http://1.2.3.4:2053\n"
+    "(⚠️ именно http — install_node.sh не настраивает TLS-сертификат на "
+    "панели; https подставляйте только если сами включили HTTPS на панели):"
+)
 ADMIN_NODE_ADD_ASK_PANEL_USER = "Логин панели:"
 ADMIN_NODE_ADD_ASK_PANEL_PASS = "Пароль панели:"
+ADMIN_NODE_ADD_ASK_API_TOKEN = (
+    "API-токен панели (рекомендуется для 3x-ui 3.7.0+ — без него логин по "
+    "паролю извне может блокироваться панелью как небезопасный способ для "
+    "API-запросов, HTTP 403).\n\n"
+    "Получить: зайдите в веб-панель по логину/паролю выше → Settings → "
+    "Security → API Token → Generate → Copy. Скопируйте сразу — в некоторых "
+    "версиях панель показывает токен только один раз.\n\n"
+    "Если у вас старая версия панели без токенов — отправьте /skip, "
+    "тогда бот будет логиниться по паролю, как раньше."
+)
 ADMIN_NODE_ADD_CONNECTING = "🔄 Подключаюсь к панели и создаю Reality-инбаунд, подождите..."
 
 
@@ -373,6 +387,19 @@ def admin_node_add_failed(error: str) -> str:
         f"❌ Не удалось создать инбаунд на панели: <code>{error}</code>\n\n"
         "Проверьте адрес панели, логин/пароль и доступность порта, затем попробуйте снова "
         "(/cancel — отменить)."
+    )
+
+
+def admin_node_add_connection_failed(error: str) -> str:
+    return (
+        f"❌ Не удалось подключиться к панели: <code>{error}</code>\n\n"
+        "Это ошибка на уровне сети (TCP), а не логина — проверьте по порядку:\n"
+        "1. URL введён с <b>http://</b>, а не https:// (install_node.sh не настраивает TLS)\n"
+        "2. Порт панели открыт в firewall <b>облака</b> (не только ufw на сервере)\n"
+        "3. На ноде: <code>sudo docker ps</code> — контейнер 3x-ui запущен?\n"
+        "4. На ноде: <code>sudo ufw status</code> — порт панели разрешён?\n"
+        "5. С сервера бота: <code>curl -v http://ip-ноды:порт</code> — что отвечает?\n\n"
+        "Исправьте и попробуйте снова (/cancel — отменить)."
     )
 
 
